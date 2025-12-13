@@ -9,6 +9,7 @@ import (
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
+	"github.com/xtls/xray-core/common/connlimit"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/log"
 	"github.com/xtls/xray-core/common/net"
@@ -202,6 +203,16 @@ func (s *Server) Process(ctx context.Context, network net.Network, conn stat.Con
 
 			shouldFallback = true
 		}
+	}
+
+	// ✅ 在这里插入连接数限制逻辑（验证通过的用户）
+	if user != nil {
+		if !connlimit.IncConncustom(user.Email) {
+			errors.LogWarning(ctx, "user ", user.Email, " connection limit exceeded, drop connection")
+			conn.Close()
+			return nil
+		}
+		defer connlimit.DecConncustom(user.Email)
 	}
 
 	if isfb && shouldFallback {
