@@ -13,7 +13,7 @@ var (
 )
 
 func init() {
-	log.Println("[Trojan] connlimit.go initialized")
+	log.Println("connlimit.go initialized")
 	go cleanupInactiveUsers()
 }
 
