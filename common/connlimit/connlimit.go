@@ -9,7 +9,7 @@ import (
 
 var (
 	userConnCount sync.Map // key: email, value: *atomic.Int32
-	maxConn int32 = 80    // 固定上限
+	maxConn int32 = 100    // 固定上限
 )
 
 func init() {
