@@ -16,7 +16,9 @@ import (
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
 	"github.com/xtls/xray-core/common/errors"
+	"github.com/xtls/xray-core/common/log"
 	"github.com/xtls/xray-core/common/net"
+	sessionctx "github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/common/singbridge"
 	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/transport"
@@ -85,6 +87,35 @@ func (s *session) handleNewStream(ctx context.Context, st *stream, body buf.Mult
 		buf.ReleaseMulti(body)
 		return errors.New("anytls: invalid destination address in SYN")
 	}
+
+	// 1. 从当前上下文中提取在 inbound.go 阶段绑定的用户信息和来源 IP
+	inb := sessionctx.InboundFromContext(ctx) 
+	var email string
+	var from interface{}
+
+	if inb != nil {
+		if inb.Source.IsValid() {
+			from = inb.Source
+		}
+		if inb.User != nil {
+			email = inb.User.Email
+		}
+	}
+	
+	// 防御性 fallback：如果 inbound 里没取到来源 IP，就从 TCP 连接底层去取
+	if from == nil && s.conn != nil {
+		from = s.conn.RemoteAddr()
+	}
+
+	ctx = log.ContextWithAccessMessage(ctx, &log.AccessMessage{
+		From:   from,
+		To:     dest,
+		Status: log.AccessAccepted,
+		Reason: "",
+		Email:  email, 
+	})
+	
+	errors.LogInfo(ctx, "anytls: received request for ", dest)
 
 	// Check for UDP-over-TCP v2 magic domain in a new stream request.
 	if strings.Contains(dest.Address.String(), "udp-over-tcp.arpa") {
