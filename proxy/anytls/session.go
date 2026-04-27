@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing/common/uot"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
+	"github.com/xtls/xray-core/common/connlimit"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/log"
 	"github.com/xtls/xray-core/common/net"
@@ -130,12 +131,33 @@ func (s *session) handleNewStream(ctx context.Context, st *stream, body buf.Mult
 		return nil
 	}
 
+	// ==================== 【此处拦截 TCP 流 (Increment)】 ====================
+	if email != "" {
+		if !connlimit.IncConncustom(email) {
+			errors.LogWarning(ctx, "anytls: user ", email, " TCP stream limit exceeded, drop stream")
+			return errors.New("TCP stream limit exceeded")
+		}
+	}
+	// =====================================================================================
+
 	l, err := s.dispatcher.Dispatch(ctx, dest)
-	if err != nil {
+	if err != nil {		
+		if email != "" { connlimit.DecConncustom(email) }// 分发失败，立刻回退 TCP 计数
 		errors.LogWarning(ctx, "anytls: new stream dispatcher error, streamId=", st.sid, " err=", err)
 		return nil
 	}
 	st.link = l
+	// ==================== 【关键修改：利用原生钩子回收计数 (Decrement)】 ====================
+	if email != "" {
+		oldHook := st.dieHook
+		st.dieHook = func() {
+			connlimit.DecConncustom(email)
+			if oldHook != nil {
+				oldHook()
+			}
+		}
+	}
+	// =====================================================================================
 
 	if err := s.sendFrame(newFrame(cmdSYNACK, st.sid)); err != nil {
 		errors.LogWarning(ctx, "anytls: new stream SYNACK send error, streamId=", st.sid, " err=", err)

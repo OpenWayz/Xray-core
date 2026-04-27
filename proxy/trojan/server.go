@@ -201,16 +201,6 @@ func (s *Server) Process(ctx context.Context, network net.Network, conn stat.Con
 		}
 	}
 
-	// ✅ 在这里插入连接数限制逻辑（验证通过的用户）
-	if user != nil {
-		if !connlimit.IncConncustom(user.Email) {
-			errors.LogWarning(ctx, "user ", user.Email, " connection limit exceeded, drop connection")
-			conn.Close()
-			return nil
-		}
-		defer connlimit.DecConncustom(user.Email)
-	}
-
 	if isfb && shouldFallback {
 		return s.fallback(ctx, err, sessionPolicy, conn, iConn, napfb, first, firstLen, bufferedReader)
 	} else if shouldFallback {
@@ -237,6 +227,17 @@ func (s *Server) Process(ctx context.Context, network net.Network, conn stat.Con
 	inbound.Name = "trojan"
 	inbound.CanSpliceCopy = 3
 	inbound.User = user
+
+	// ==================== 【新增：连接数限制】 ====================确保 user 解析成功，防止空指针 Panic
+	if user != nil {
+		if !connlimit.IncConncustom(user.Email) {
+			errors.LogWarning(ctx, "user ", user.Email, " connection limit exceeded, drop connection")			
+			return errors.New("connection limit exceeded")// xray-core 最外层的入站处理器捕捉到 error 后，会自动且安全地切断底层 TCP 连接
+		}
+		
+		defer connlimit.DecConncustom(user.Email) // 利用 defer 确保在函数 return 时（无论是正常结束还是后续报错退出），必定执行递减
+	}
+
 	sessionPolicy = s.policyManager.ForLevel(user.Level)
 
 	if destination.Network == net.Network_UDP { // handle udp request

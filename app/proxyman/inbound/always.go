@@ -5,6 +5,7 @@ import (
 
 	"github.com/xtls/xray-core/app/proxyman"
 	"github.com/xtls/xray-core/common"
+	"github.com/xtls/xray-core/common/connlimit"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/mux"
 	"github.com/xtls/xray-core/common/net"
@@ -176,6 +177,9 @@ func (h *AlwaysOnInboundHandler) Start() error {
 			return err
 		}
 	}
+	// 启动连接数清理任务 (sync.Once 保证多个 Inbound 启动时也只执行一次)
+	connlimit.StartCleanupTask()
+
 	return nil
 }
 
